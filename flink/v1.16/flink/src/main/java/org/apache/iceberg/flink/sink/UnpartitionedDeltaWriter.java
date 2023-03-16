@@ -29,10 +29,10 @@ import org.apache.iceberg.io.FileAppenderFactory;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.OutputFileFactory;
 
-class UnpartitionedDeltaWriter extends BaseDeltaTaskWriter {
+public class UnpartitionedDeltaWriter extends BaseDeltaTaskWriter {
   private final RowDataDeltaWriter writer;
 
-  UnpartitionedDeltaWriter(
+  public UnpartitionedDeltaWriter(
       PartitionSpec spec,
       FileFormat format,
       FileAppenderFactory<RowData> appenderFactory,

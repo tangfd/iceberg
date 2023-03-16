@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
 
-class CommitSummary {
+public class CommitSummary {
 
   private final AtomicLong dataFilesCount = new AtomicLong();
   private final AtomicLong dataFilesRecordCount = new AtomicLong();
@@ -33,7 +33,7 @@ class CommitSummary {
   private final AtomicLong deleteFilesRecordCount = new AtomicLong();
   private final AtomicLong deleteFilesByteCount = new AtomicLong();
 
-  CommitSummary(NavigableMap<Long, WriteResult> pendingResults) {
+  public CommitSummary(NavigableMap<Long, WriteResult> pendingResults) {
     pendingResults
         .values()
         .forEach(
@@ -55,7 +55,7 @@ class CommitSummary {
             });
   }
 
-  long dataFilesCount() {
+  public long dataFilesCount() {
     return dataFilesCount.get();
   }
 
@@ -67,7 +67,7 @@ class CommitSummary {
     return dataFilesByteCount.get();
   }
 
-  long deleteFilesCount() {
+  public long deleteFilesCount() {
     return deleteFilesCount.get();
   }
 

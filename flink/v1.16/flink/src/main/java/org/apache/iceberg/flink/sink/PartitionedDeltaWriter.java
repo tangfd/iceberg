@@ -34,13 +34,13 @@ import org.apache.iceberg.io.OutputFileFactory;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.util.Tasks;
 
-class PartitionedDeltaWriter extends BaseDeltaTaskWriter {
+public class PartitionedDeltaWriter extends BaseDeltaTaskWriter {
 
   private final PartitionKey partitionKey;
 
   private final Map<PartitionKey, RowDataDeltaWriter> writers = Maps.newHashMap();
 
-  PartitionedDeltaWriter(
+  public PartitionedDeltaWriter(
       PartitionSpec spec,
       FileFormat format,
       FileAppenderFactory<RowData> appenderFactory,
