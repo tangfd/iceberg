@@ -27,7 +27,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.collections.MapUtils;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
@@ -57,26 +56,27 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResult>
     private transient int attemptId;
     private transient int currentCount = 0;
     private transient ExecutorService executor;
-    private final transient boolean asyncFlush;
-    private final transient int maxWriteCount;
+    private final boolean asyncFlush;
+    private final int maxWriteCount;
+    private final int corePoolSize;
 
     DynamicIcebergStreamWriter(DynamicTaskWriterFactory<RowData> taskWriterFactory,
                                boolean asyncFlush, int corePoolSize, int maxWriteCount) {
         this.asyncFlush = asyncFlush;
         this.maxWriteCount = maxWriteCount;
+        this.corePoolSize = corePoolSize;
         this.taskWriterFactory = taskWriterFactory;
         setChainingStrategy(ChainingStrategy.ALWAYS);
-        if (asyncFlush) {
-            Preconditions.checkArgument(corePoolSize > 0, "corePoolSize must be more than 0");
-            final AtomicInteger threadNumber = new AtomicInteger(1);
-            executor = ThreadPools.newWorkerPool("flush-write-data-thread", corePoolSize);
-        }
     }
 
     @Override
     public void open() {
         this.subTaskId = getRuntimeContext().getIndexOfThisSubtask();
         this.attemptId = getRuntimeContext().getAttemptNumber();
+        if (asyncFlush) {
+            Preconditions.checkArgument(corePoolSize > 0, "corePoolSize must be more than 0");
+            executor = ThreadPools.newWorkerPool("flush-write-data-thread", corePoolSize);
+        }
     }
 
     @Override

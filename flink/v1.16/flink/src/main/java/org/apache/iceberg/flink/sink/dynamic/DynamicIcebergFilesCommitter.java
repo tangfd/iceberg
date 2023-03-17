@@ -27,6 +27,7 @@ import java.util.NavigableMap;
 import java.util.SortedMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
@@ -46,6 +47,8 @@ import org.apache.iceberg.RowDelta;
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.SnapshotUpdate;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.flink.FlinkConfigOptions;
+import org.apache.iceberg.flink.FlinkWriteOptions;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.sink.CommitSummary;
 import org.apache.iceberg.flink.sink.DeltaManifests;
@@ -128,17 +131,13 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
     private final Integer workerPoolSize;
     private transient ExecutorService workerPool;
 
-    DynamicIcebergFilesCommitter(
-            TableLoader tableLoader,
-            boolean replacePartitions,
-            Map<String, String> snapshotProperties,
-            Integer workerPoolSize,
-            String branch) {
-        this.tableLoader = tableLoader;
-        this.replacePartitions = replacePartitions;
+    DynamicIcebergFilesCommitter(Map<String, String> writeOptions, Map<String, String> snapshotProperties) {
+        this.tableLoader = null;
+        this.replacePartitions = Boolean.parseBoolean(writeOptions.get(FlinkWriteOptions.OVERWRITE_MODE.key()));
         this.snapshotProperties = snapshotProperties;
-        this.workerPoolSize = workerPoolSize;
-        this.branch = branch;
+        this.workerPoolSize = FlinkConfigOptions.TABLE_EXEC_ICEBERG_WORKER_POOL_SIZE.defaultValue();
+        this.branch = StringUtils.defaultString(writeOptions.get(FlinkWriteOptions.BRANCH.key()),
+                FlinkWriteOptions.BRANCH.defaultValue());
     }
 
     @Override
@@ -190,7 +189,7 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
                     getMaxCommittedCheckpointId(table, restoredFlinkJobId, operatorUniqueId, branch);
 
             NavigableMap<Long, byte[]> uncommittedDataFiles = Maps.newTreeMap(checkpointsState.get().iterator().next())
-                            .tailMap(maxCommittedCheckpointId, false);
+                    .tailMap(maxCommittedCheckpointId, false);
             if (!uncommittedDataFiles.isEmpty()) {
                 // Committed all uncommitted data files from the old flink job to iceberg table.
                 long maxUncommittedCheckpointId = uncommittedDataFiles.lastKey();

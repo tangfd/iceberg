@@ -34,6 +34,7 @@ import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.iceberg.DistributionMode;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.flink.FlinkConfigOptions;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.FlinkWriteOptions;
 import org.apache.iceberg.io.WriteResult;
@@ -240,24 +241,15 @@ public class FlinkDynamicTableSink {
         @SuppressWarnings("unchecked")
         private <T> DataStreamSink<T> appendDummySink(
                 SingleOutputStreamOperator<Void> committerStream) {
-            DataStreamSink<T> resultStream =
-                    committerStream
-                            .addSink(new DiscardingSink())
-                            .name(String.format("IcebergSink %s", this.table.name()))
-                            .setParallelism(1);
-            if (uidPrefix != null) {
-                resultStream = resultStream.uid(uidPrefix + "-dummysink");
-            }
-            return resultStream;
+            return committerStream
+                    .addSink(new DiscardingSink())
+                    .name("DynamicIcebergSink")
+                    .setParallelism(1)
+                    .uid("DynamicIceberg-dummysink");
         }
 
         private SingleOutputStreamOperator<Void> appendCommitter(SingleOutputStreamOperator<WriteResult> writerStream) {
-            DynamicIcebergFilesCommitter filesCommitter = new DynamicIcebergFilesCommitter(
-                    tableLoader,
-                    flinkWriteConf.overwriteMode(),
-                    snapshotProperties,
-                    flinkWriteConf.workerPoolSize(),
-                    flinkWriteConf.branch());
+            DynamicIcebergFilesCommitter filesCommitter = new DynamicIcebergFilesCommitter(writeOptions, snapshotProperties);
             return writerStream
                     .transform(ICEBERG_FILES_COMMITTER_NAME, Types.VOID, filesCommitter)
                     .setParallelism(1)
@@ -318,7 +310,8 @@ public class FlinkDynamicTableSink {
     static DynamicIcebergStreamWriter createStreamWriter(Map<String, String> writeOptions, ReadableConfig readableConfig) {
         DynamicTaskWriterFactory<RowData> taskWriterFactory = new DynamicRowDataTaskWriterFactory(writeOptions, readableConfig);
         String async = writeOptions.getOrDefault("asyncFlush", "true");
-        String corePoolSize = writeOptions.getOrDefault("corePoolSize", "4");
+        String corePoolSize = writeOptions.getOrDefault("corePoolSize",
+                FlinkConfigOptions.TABLE_EXEC_ICEBERG_WORKER_POOL_SIZE.defaultValue().toString());
         String maxWriteCount = writeOptions.getOrDefault("maxWriteCount", "500");
         return new DynamicIcebergStreamWriter(
                 taskWriterFactory,
