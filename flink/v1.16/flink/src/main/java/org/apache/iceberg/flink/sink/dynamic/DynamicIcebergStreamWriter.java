@@ -43,8 +43,8 @@ import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.util.ThreadPools;
 
-class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResult>
-        implements OneInputStreamOperator<RowDataWithTable, WriteResult>, BoundedOneInput {
+class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithTable>
+        implements OneInputStreamOperator<RowDataWithTable, WriteResultWithTable>, BoundedOneInput {
 
     private static final long serialVersionUID = 1L;
 
@@ -190,7 +190,7 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResult>
         WriteResult result = writer.complete();
         IcebergStreamWriterMetrics writerMetrics = METRICS_MAP.get(table);
         writerMetrics.updateFlushResult(result);
-        output.collect(new StreamRecord<>(result));
+        output.collect(new StreamRecord<>(new WriteResultWithTable(result, table)));
         writerMetrics.flushDuration(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNano));
     }
 }

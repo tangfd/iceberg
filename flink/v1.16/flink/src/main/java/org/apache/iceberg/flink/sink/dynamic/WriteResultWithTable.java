@@ -19,38 +19,35 @@
  *
  */
 
-package org.apache.iceberg.flink.sink.dynamic.table;
+package org.apache.iceberg.flink.sink.dynamic;
+
 
 import java.io.Serializable;
 import org.apache.iceberg.Table;
-import org.apache.iceberg.flink.TableLoader;
-import org.apache.iceberg.flink.sink.dynamic.TableInfo;
+import org.apache.iceberg.flink.sink.dynamic.table.IcebergTableServiceLoader;
+import org.apache.iceberg.io.WriteResult;
 
 /**
- * @author TangFD 2023/3/16
+ * @author TangFD 2023/3/24
  */
-public interface IcebergTableService extends Serializable {
-    /**
-     * 根据表名信息，获取Iceberg 表对象
-     *
-     * @param tableInfo 表信息
-     * @return {@link Table}
-     */
-    Table loadTable(TableInfo tableInfo);
+public class WriteResultWithTable implements Serializable {
+    private final WriteResult writeResult;
+    private final String tableName;
 
-    /**
-     * 根据表名，获取已存在的Iceberg 表对象
-     *
-     * @param tableName 表名
-     * @return {@link Table}
-     */
-    Table loadExistTable(String tableName);
+    public WriteResultWithTable(WriteResult writeResult, String tableName) {
+        this.writeResult = writeResult;
+        this.tableName = tableName;
+    }
 
-    /**
-     * 根据表名信息，获取 TableLoader
-     *
-     * @param tableName 表名
-     * @return {@link TableLoader}
-     */
-    TableLoader tableLoader(String tableName);
+    public WriteResult getWriteResult() {
+        return writeResult;
+    }
+
+    public String getTableName() {
+        return tableName;
+    }
+
+    public Table getTable() {
+        return IcebergTableServiceLoader.loadTable(TableInfo.of(null, tableName));
+    }
 }

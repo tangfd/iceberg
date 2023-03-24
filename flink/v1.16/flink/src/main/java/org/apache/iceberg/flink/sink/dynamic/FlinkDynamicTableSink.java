@@ -37,7 +37,6 @@ import org.apache.iceberg.Schema;
 import org.apache.iceberg.flink.FlinkConfigOptions;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.FlinkWriteOptions;
-import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.types.TypeUtil;
@@ -74,7 +73,6 @@ public class FlinkDynamicTableSink {
     public static class Builder {
         private DataStream<RowDataWithTable> rowDataInput = null;
         private Integer writeParallelism = null;
-        private String uidPrefix = null;
         private final Map<String, String> snapshotProperties = Maps.newHashMap();
         private ReadableConfig readableConfig = new Configuration();
         private final Map<String, String> writeOptions = Maps.newHashMap();
@@ -155,34 +153,6 @@ public class FlinkDynamicTableSink {
             return this;
         }
 
-        /**
-         * Set the uid prefix for FlinkSink operators. Note that FlinkSink internally consists of multiple operators
-         * (like writer, committer, dummy sink etc.) Actually operator uid will be appended with a suffix like
-         * "uidPrefix-writer". <br>
-         * <br>
-         * If provided, this prefix is also applied to operator names. <br>
-         * <br>
-         * Flink auto generates operator uid if not set explicitly. It is a recommended <a
-         * href="https://ci.apache.org/projects/flink/flink-docs-master/docs/ops/production_ready/"> best-practice to
-         * set uid for all operators</a> before deploying to production. Flink has an option to {@code
-         * pipeline.auto-generate-uid=false} to disable auto-generation and force explicit setting of all operator uid.
-         * <br>
-         * <br>
-         * Be careful with setting this for an existing job, because now we are changing the operator uid from an
-         * auto-generated one to this new value. When deploying the change with a checkpoint, Flink won't be able to
-         * restore the previous Flink sink operator state (more specifically the committer operator state). You need to
-         * use {@code --allowNonRestoredState} to ignore the previous sink state. During restore Flink sink state is
-         * used to check if last commit was actually successful or not. {@code --allowNonRestoredState} can lead to data
-         * loss if the Iceberg commit failed in the last completed checkpoint.
-         *
-         * @param newPrefix prefix for Flink sink operator uid and name
-         * @return {@link Builder} to connect the iceberg table.
-         */
-        public Builder uidPrefix(String newPrefix) {
-            this.uidPrefix = newPrefix;
-            return this;
-        }
-
         public Builder setSnapshotProperties(Map<String, String> properties) {
             snapshotProperties.putAll(properties);
             return this;
@@ -210,6 +180,10 @@ public class FlinkDynamicTableSink {
             return set("corePoolSize", Integer.toString(corePoolSize));
         }
 
+        public Builder setMaxContinuousEmptyCommits(int maxContinuousEmptyCommits) {
+            return set("flink.max-continuous-empty-commits", Integer.toString(maxContinuousEmptyCommits));
+        }
+
         private <T> DataStreamSink<T> chainIcebergOperators() {
             Preconditions.checkArgument(
                     rowDataInput != null,
@@ -219,7 +193,7 @@ public class FlinkDynamicTableSink {
             DataStream<RowDataWithTable> distributeStream = distributeDataStream(rowDataInput);
 
             // Add parallel writers that append rows to files
-            SingleOutputStreamOperator<WriteResult> writerStream = appendWriter(distributeStream);
+            SingleOutputStreamOperator<WriteResultWithTable> writerStream = appendWriter(distributeStream);
 
             // Add single-parallelism committer that commits files
             // after successful checkpoint or end of input
@@ -244,25 +218,25 @@ public class FlinkDynamicTableSink {
             return committerStream
                     .addSink(new DiscardingSink())
                     .name("DynamicIcebergSink")
-                    .setParallelism(1)
                     .uid("DynamicIceberg-dummysink");
         }
 
-        private SingleOutputStreamOperator<Void> appendCommitter(SingleOutputStreamOperator<WriteResult> writerStream) {
+        private SingleOutputStreamOperator<Void> appendCommitter(SingleOutputStreamOperator<WriteResultWithTable> writerStream) {
             DynamicIcebergFilesCommitter filesCommitter = new DynamicIcebergFilesCommitter(writeOptions, snapshotProperties);
+            int parallelism = writeParallelism == null ? writerStream.getParallelism() : writeParallelism;
             return writerStream
+                    .keyBy(WriteResultWithTable::getTableName)
                     .transform(ICEBERG_FILES_COMMITTER_NAME, Types.VOID, filesCommitter)
-                    .setParallelism(1)
-                    .setMaxParallelism(1)
+                    .setParallelism(parallelism)
                     .uid("iceberg-table-streaming-committer");
         }
 
-        private SingleOutputStreamOperator<WriteResult> appendWriter(DataStream<RowDataWithTable> input) {
+        private SingleOutputStreamOperator<WriteResultWithTable> appendWriter(DataStream<RowDataWithTable> input) {
             DynamicIcebergStreamWriter streamWriter = createStreamWriter(this.writeOptions, this.readableConfig);
             int parallelism = writeParallelism == null ? input.getParallelism() : writeParallelism;
             return input.transform(
                     ICEBERG_STREAM_WRITER_NAME,
-                    TypeInformation.of(WriteResult.class),
+                    TypeInformation.of(WriteResultWithTable.class),
                     streamWriter)
                     .setParallelism(parallelism)
                     .uid("iceberg-table-streaming-writer");

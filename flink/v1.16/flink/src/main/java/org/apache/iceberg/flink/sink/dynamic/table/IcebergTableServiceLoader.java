@@ -22,11 +22,13 @@
 package org.apache.iceberg.flink.sink.dynamic.table;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.ServiceLoader;
 import org.apache.iceberg.Table;
-import org.apache.iceberg.flink.sink.dynamic.TableInfo;
 import org.apache.iceberg.flink.TableLoader;
+import org.apache.iceberg.flink.sink.dynamic.TableInfo;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,12 +40,46 @@ import org.slf4j.LoggerFactory;
  */
 public class IcebergTableServiceLoader {
     private static final Logger LOG = LoggerFactory.getLogger(IcebergTableServiceLoader.class);
+    private static final Map<String, Table> TABLE_CACHE = new HashMap<>();
 
     private static IcebergTableService icebergTableService;
 
     public static Table loadTable(TableInfo tableInfo) {
         Table table = load().loadTable(tableInfo);
         Preconditions.checkArgument(table != null, "Iceberg table shouldn't be null");
+        TABLE_CACHE.put(tableInfo.getTable(), table);
+        return table;
+    }
+
+    /**
+     * 加载已存在得表
+     *
+     * @param tableName 表名
+     * @return {@link Table}
+     */
+    public static Table loadExistTable(String tableName) {
+        Table table = load().loadExistTable(tableName);
+        Preconditions.checkArgument(table != null, "Iceberg table shouldn't be null");
+        TABLE_CACHE.put(tableName, table);
+        return table;
+    }
+
+    public static Table loadExistTableWithCache(String tableName) {
+        Table table = TABLE_CACHE.get(tableName);
+        if (table != null) {
+            return table;
+        }
+
+        synchronized (IcebergTableServiceLoader.class) {
+            table = TABLE_CACHE.get(tableName);
+            if (table != null) {
+                return table;
+            }
+
+            table = loadExistTable(tableName);
+            TABLE_CACHE.put(tableName, table);
+        }
+
         return table;
     }
 

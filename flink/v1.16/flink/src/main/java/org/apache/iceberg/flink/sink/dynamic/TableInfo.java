@@ -42,6 +42,10 @@ public class TableInfo {
         return new TableInfo(db, tableName);
     }
 
+    public static TableInfo of(String tableName) {
+        return of(null, tableName);
+    }
+
     public String getDb() {
         return db;
     }
