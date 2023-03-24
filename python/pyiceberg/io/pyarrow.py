@@ -68,6 +68,11 @@ from pyiceberg.expressions.visitors import (
 )
 from pyiceberg.expressions.visitors import visit as boolean_expression_visit
 from pyiceberg.io import (
+    S3_ACCESS_KEY_ID,
+    S3_ENDPOINT,
+    S3_REGION,
+    S3_SECRET_ACCESS_KEY,
+    S3_SESSION_TOKEN,
     FileIO,
     InputFile,
     InputStream,
@@ -266,10 +271,11 @@ class PyArrowFileIO(FileIO):
     def _get_fs(self, scheme: str) -> FileSystem:
         if scheme in {"s3", "s3a", "s3n"}:
             client_kwargs = {
-                "endpoint_override": self.properties.get("s3.endpoint"),
-                "access_key": self.properties.get("s3.access-key-id"),
-                "secret_key": self.properties.get("s3.secret-access-key"),
-                "session_token": self.properties.get("s3.session-token"),
+                "endpoint_override": self.properties.get(S3_ENDPOINT),
+                "access_key": self.properties.get(S3_ACCESS_KEY_ID),
+                "secret_key": self.properties.get(S3_SECRET_ACCESS_KEY),
+                "session_token": self.properties.get(S3_SESSION_TOKEN),
+                "region": self.properties.get(S3_REGION),
             }
             return S3FileSystem(**client_kwargs)
         elif scheme == "file":
@@ -422,11 +428,11 @@ class _ConvertToArrowExpression(BoundBooleanExpressionVisitor[pc.Expression]):
 
     def visit_is_nan(self, term: BoundTerm[Any]) -> pc.Expression:
         ref = pc.field(term.ref().field.name)
-        return ref.is_null(nan_is_null=True) & ref.is_valid()
+        return pc.is_nan(ref)
 
     def visit_not_nan(self, term: BoundTerm[Any]) -> pc.Expression:
         ref = pc.field(term.ref().field.name)
-        return ~(ref.is_null(nan_is_null=True) & ref.is_valid())
+        return ~pc.is_nan(ref)
 
     def visit_is_null(self, term: BoundTerm[Any]) -> pc.Expression:
         return pc.field(term.ref().field.name).is_null(nan_is_null=False)
