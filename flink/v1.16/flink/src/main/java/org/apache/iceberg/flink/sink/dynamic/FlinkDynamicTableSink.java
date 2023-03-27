@@ -195,6 +195,9 @@ public class FlinkDynamicTableSink {
             Preconditions.checkArgument(
                     rowDataInput != null,
                     "Please use forRowData() to initialize the input DataStream.");
+            Preconditions.checkArgument(
+                    param != null,
+                    "Please use param() to initialize the ParameterTool.");
             // Distribute the records from input data stream based on the write.distribution-mode and
             // equality fields.
             DataStream<RowDataWithTable> distributeStream = distributeDataStream(rowDataInput);
