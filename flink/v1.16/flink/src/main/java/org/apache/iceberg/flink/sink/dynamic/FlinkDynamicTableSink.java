@@ -87,7 +87,7 @@ public class FlinkDynamicTableSink {
             return this;
         }
 
-        private Builder param(ParameterTool param) {
+        public Builder param(ParameterTool param) {
             this.param = param;
             return this;
         }
