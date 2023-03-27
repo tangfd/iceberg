@@ -112,7 +112,7 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
     // It will have an unique identifier for one job.
     private transient String flinkJobId;
     private transient String operatorUniqueId;
-    private transient Map<String, IcebergFilesCommitterMetrics> committerMetricsMap = new HashMap<>(32);
+    private final transient Map<String, IcebergFilesCommitterMetrics> committerMetricsMap = new HashMap<>(32);
     private final transient Map<String, ManifestOutputFileFactory> manifestOutputFileFactoryMap = new HashMap<>(32);
     private transient long maxCommittedCheckpointId;
     private transient int continuousEmptyCheckpoints;

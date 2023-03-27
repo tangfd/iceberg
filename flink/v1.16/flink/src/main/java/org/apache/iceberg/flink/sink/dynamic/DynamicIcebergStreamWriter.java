@@ -173,7 +173,7 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
             try {
                 future.get();
             } catch (Exception e) {
-                e.printStackTrace();
+                LOG.error("flush RowData error!", e);
             }
         }
     }
