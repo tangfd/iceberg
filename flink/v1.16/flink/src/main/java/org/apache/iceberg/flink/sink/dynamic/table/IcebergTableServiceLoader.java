@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.sink.dynamic.TableInfo;
@@ -44,8 +45,8 @@ public class IcebergTableServiceLoader {
 
     private static IcebergTableService icebergTableService;
 
-    public static Table loadTable(TableInfo tableInfo) {
-        Table table = load().loadTable(tableInfo);
+    public static Table loadTable(TableInfo tableInfo, ParameterTool param) {
+        Table table = load().loadTable(tableInfo, param);
         Preconditions.checkArgument(table != null, "Iceberg table shouldn't be null");
         TABLE_CACHE.put(tableInfo.getTable(), table);
         return table;
@@ -57,14 +58,14 @@ public class IcebergTableServiceLoader {
      * @param tableName 表名
      * @return {@link Table}
      */
-    public static Table loadExistTable(String tableName) {
-        Table table = load().loadExistTable(tableName);
+    public static Table loadExistTable(String tableName, ParameterTool param) {
+        Table table = load().loadExistTable(tableName, param);
         Preconditions.checkArgument(table != null, "Iceberg table shouldn't be null");
         TABLE_CACHE.put(tableName, table);
         return table;
     }
 
-    public static Table loadExistTableWithCache(String tableName) {
+    public static Table loadExistTableWithCache(String tableName, ParameterTool param) {
         Table table = TABLE_CACHE.get(tableName);
         if (table != null) {
             return table;
@@ -76,15 +77,15 @@ public class IcebergTableServiceLoader {
                 return table;
             }
 
-            table = loadExistTable(tableName);
+            table = loadExistTable(tableName, param);
             TABLE_CACHE.put(tableName, table);
         }
 
         return table;
     }
 
-    public static TableLoader tableLoader(String tableName) {
-        TableLoader tableLoader = load().tableLoader(tableName);
+    public static TableLoader tableLoader(String tableName, ParameterTool param) {
+        TableLoader tableLoader = load().tableLoader(tableName, param);
         Preconditions.checkArgument(tableLoader != null, "Iceberg TableLoader shouldn't be null");
         return tableLoader;
     }

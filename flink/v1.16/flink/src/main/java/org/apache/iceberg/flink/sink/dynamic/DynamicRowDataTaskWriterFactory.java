@@ -20,6 +20,7 @@ package org.apache.iceberg.flink.sink.dynamic;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.data.RowData;
@@ -53,13 +54,15 @@ public class DynamicRowDataTaskWriterFactory implements DynamicTaskWriterFactory
     private static final transient Map<String, RowDataTaskWriterFactory> FACTORY_MAP = new ConcurrentHashMap<>(256);
 
     private final boolean upsert;
+    private final ParameterTool param;
     private final Map<String, String> writeOptions;
     private final ReadableConfig readableConfig;
 
-    public DynamicRowDataTaskWriterFactory(Map<String, String> writeOptions, ReadableConfig readableConfig) {
+    public DynamicRowDataTaskWriterFactory(Map<String, String> writeOptions, ReadableConfig readableConfig, ParameterTool param) {
         this.writeOptions = writeOptions;
         this.readableConfig = readableConfig;
         this.upsert = Boolean.parseBoolean(writeOptions.get(FlinkWriteOptions.WRITE_UPSERT_ENABLED.key()));
+        this.param = param;
     }
 
     @Override
@@ -69,7 +72,7 @@ public class DynamicRowDataTaskWriterFactory implements DynamicTaskWriterFactory
     }
 
     private RowDataTaskWriterFactory createTaskWriterFactory(TableInfo tableInfo, int taskId, int attemptId) {
-        Table table = IcebergTableServiceLoader.loadTable(tableInfo);
+        Table table = IcebergTableServiceLoader.loadTable(tableInfo, param);
         FlinkWriteConf flinkWriteConf = new FlinkWriteConf(table, writeOptions, readableConfig);
         FileFormat format = flinkWriteConf.dataFileFormat();
         Schema schema = table.schema();

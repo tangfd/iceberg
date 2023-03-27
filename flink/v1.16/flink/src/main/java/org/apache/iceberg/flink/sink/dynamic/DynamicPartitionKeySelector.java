@@ -21,6 +21,7 @@ package org.apache.iceberg.flink.sink.dynamic;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.iceberg.Schema;
@@ -37,6 +38,11 @@ import org.apache.iceberg.flink.sink.dynamic.table.IcebergTableServiceLoader;
 class DynamicPartitionKeySelector implements KeySelector<RowDataWithTable, String> {
     // TODO: 2023/3/16 换成 Caffeine 设置淘汰
     private static final transient Map<String, PartitionKeySelector> KEY_SELECTOR_MAP = new ConcurrentHashMap<>(256);
+    private final ParameterTool param;
+
+    public DynamicPartitionKeySelector(ParameterTool param) {
+        this.param = param;
+    }
 
     @Override
     public String getKey(RowDataWithTable row) {
@@ -45,7 +51,7 @@ class DynamicPartitionKeySelector implements KeySelector<RowDataWithTable, Strin
     }
 
     private PartitionKeySelector create(TableInfo tableInfo) {
-        Table table = IcebergTableServiceLoader.loadTable(tableInfo);
+        Table table = IcebergTableServiceLoader.loadTable(tableInfo, param);
         Schema schema = table.schema();
         TableSchema tableSchema = FlinkSchemaUtil.toSchema(schema);
         RowType flinkRowType = FlinkDynamicTableSink.toFlinkRowType(schema, tableSchema);

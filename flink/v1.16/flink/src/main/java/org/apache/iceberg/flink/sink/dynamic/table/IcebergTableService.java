@@ -22,6 +22,7 @@
 package org.apache.iceberg.flink.sink.dynamic.table;
 
 import java.io.Serializable;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.sink.dynamic.TableInfo;
@@ -34,23 +35,26 @@ public interface IcebergTableService extends Serializable {
      * 根据表名信息，获取Iceberg 表对象
      *
      * @param tableInfo 表信息
+     * @param param     参数
      * @return {@link Table}
      */
-    Table loadTable(TableInfo tableInfo);
+    Table loadTable(TableInfo tableInfo, ParameterTool param);
 
     /**
      * 根据表名，获取已存在的Iceberg 表对象
      *
      * @param tableName 表名
+     * @param param     参数
      * @return {@link Table}
      */
-    Table loadExistTable(String tableName);
+    Table loadExistTable(String tableName, ParameterTool param);
 
     /**
      * 根据表名信息，获取 TableLoader
      *
      * @param tableName 表名
+     * @param param     参数
      * @return {@link TableLoader}
      */
-    TableLoader tableLoader(String tableName);
+    TableLoader tableLoader(String tableName, ParameterTool param);
 }

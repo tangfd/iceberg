@@ -38,6 +38,7 @@ import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeinfo.PrimitiveArrayTypeInfo;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.MapTypeInfo;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.core.io.SimpleVersionedSerialization;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
@@ -94,6 +95,7 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
     private final boolean replacePartitions;
     private final Map<String, String> snapshotProperties;
     private final Map<String, String> writeOptions;
+    private final ParameterTool param;
 
     // A sorted map to maintain the completed data files for each pending checkpointId (which have not
     // been committed to iceberg table). We need a sorted map here because there's possible that few
@@ -134,10 +136,11 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
     private final Integer workerPoolSize;
     private transient ExecutorService workerPool;
 
-    DynamicIcebergFilesCommitter(Map<String, String> writeOptions, Map<String, String> snapshotProperties) {
+    DynamicIcebergFilesCommitter(Map<String, String> writeOptions, Map<String, String> snapshotProperties, ParameterTool param) {
         this.replacePartitions = Boolean.parseBoolean(writeOptions.get(FlinkWriteOptions.OVERWRITE_MODE.key()));
         this.snapshotProperties = snapshotProperties;
         this.writeOptions = writeOptions;
+        this.param = param;
         this.workerPoolSize = FlinkConfigOptions.TABLE_EXEC_ICEBERG_WORKER_POOL_SIZE.defaultValue();
         this.branch = StringUtils.defaultString(writeOptions.get(FlinkWriteOptions.BRANCH.key()),
                 FlinkWriteOptions.BRANCH.defaultValue());
@@ -187,7 +190,7 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
 
         Map<String, NavigableMap<Long, Map<String, byte[]>>> dataFiles = groupByTable(state);
         for (Map.Entry<String, NavigableMap<Long, Map<String, byte[]>>> entry : dataFiles.entrySet()) {
-            Table table = IcebergTableServiceLoader.loadExistTableWithCache(entry.getKey());
+            Table table = IcebergTableServiceLoader.loadExistTableWithCache(entry.getKey(), param);
             long tableMaxCommittedCheckpointId = getMaxCommittedCheckpointId(table, restoredFlinkJobId, operatorUniqueId, branch);
             NavigableMap<Long, Map<String, byte[]>> uncommittedDataFiles = entry.getValue().tailMap(tableMaxCommittedCheckpointId, false);
             if (MapUtils.isNotEmpty(uncommittedDataFiles)) {
@@ -231,7 +234,7 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
         // Clear the local buffer for current checkpoint.
         writeResultsOfCurrentCkpt.clear();
         for (String tableName : manifests.keySet()) {
-            Table table = IcebergTableServiceLoader.loadExistTableWithCache(tableName);
+            Table table = IcebergTableServiceLoader.loadExistTableWithCache(tableName, param);
             IcebergFilesCommitterMetrics committerMetrics = committerMetricsMap.get(table.name());
             if (committerMetrics != null) {
                 committerMetrics.checkpointDuration(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNano));
@@ -277,7 +280,7 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
             }
 
             for (Map.Entry<String, byte[]> entry : values.entrySet()) {
-                Table table = IcebergTableServiceLoader.loadExistTableWithCache(entry.getKey());
+                Table table = IcebergTableServiceLoader.loadExistTableWithCache(entry.getKey(), param);
                 DeltaManifests deltaManifests =
                         SimpleVersionedSerialization.readVersionAndDeSerialize(DeltaManifestsSerializer.INSTANCE, entry.getValue());
                 List<ManifestFile> manifests = manifestMap.computeIfAbsent(table, t -> new ArrayList<>());
@@ -486,7 +489,7 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
         for (Map.Entry<String, List<WriteResult>> entry : writeResultsOfCurrentCkpt.entrySet()) {
             WriteResult result = WriteResult.builder().addAll(entry.getValue()).build();
             String tableName = entry.getKey();
-            Table table = IcebergTableServiceLoader.loadExistTableWithCache(tableName);
+            Table table = IcebergTableServiceLoader.loadExistTableWithCache(tableName, param);
             ManifestOutputFileFactory manifestOutputFileFactory = manifestOutputFileFactoryMap.computeIfAbsent(tableName,
                     t -> FlinkManifestUtil.createOutputFileFactory(table, flinkJobId, operatorUniqueId, subTaskId, attemptId));
             DeltaManifests deltaManifests =

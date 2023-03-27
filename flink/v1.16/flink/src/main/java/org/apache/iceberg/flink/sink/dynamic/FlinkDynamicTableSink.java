@@ -23,6 +23,7 @@ package org.apache.iceberg.flink.sink.dynamic;
 import java.util.Map;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -73,6 +74,7 @@ public class FlinkDynamicTableSink {
     public static class Builder {
         private DataStream<RowDataWithTable> rowDataInput = null;
         private Integer writeParallelism = null;
+        private ParameterTool param = null;
         private final Map<String, String> snapshotProperties = Maps.newHashMap();
         private ReadableConfig readableConfig = new Configuration();
         private final Map<String, String> writeOptions = Maps.newHashMap();
@@ -82,6 +84,11 @@ public class FlinkDynamicTableSink {
 
         private Builder forRowData(DataStream<RowDataWithTable> newRowDataInput) {
             this.rowDataInput = newRowDataInput;
+            return this;
+        }
+
+        private Builder param(ParameterTool param) {
+            this.param = param;
             return this;
         }
 
@@ -222,7 +229,7 @@ public class FlinkDynamicTableSink {
         }
 
         private SingleOutputStreamOperator<Void> appendCommitter(SingleOutputStreamOperator<WriteResultWithTable> writerStream) {
-            DynamicIcebergFilesCommitter filesCommitter = new DynamicIcebergFilesCommitter(writeOptions, snapshotProperties);
+            DynamicIcebergFilesCommitter filesCommitter = new DynamicIcebergFilesCommitter(writeOptions, snapshotProperties, param);
             int parallelism = writeParallelism == null ? writerStream.getParallelism() : writeParallelism;
             return writerStream
                     .keyBy(WriteResultWithTable::getTableName)
@@ -232,7 +239,7 @@ public class FlinkDynamicTableSink {
         }
 
         private SingleOutputStreamOperator<WriteResultWithTable> appendWriter(DataStream<RowDataWithTable> input) {
-            DynamicIcebergStreamWriter streamWriter = createStreamWriter(this.writeOptions, this.readableConfig);
+            DynamicIcebergStreamWriter streamWriter = createStreamWriter(this.writeOptions, this.readableConfig, this.param);
             int parallelism = writeParallelism == null ? input.getParallelism() : writeParallelism;
             return input.transform(
                     ICEBERG_STREAM_WRITER_NAME,
@@ -248,14 +255,14 @@ public class FlinkDynamicTableSink {
             switch (writeMode) {
                 case "NONE":
                     LOG.info("Distribute rows by equality fields, because there are equality fields set");
-                    return input.keyBy(new DynamicEqualityFieldKeySelector());
+                    return input.keyBy(new DynamicEqualityFieldKeySelector(param));
                 case "HASH":
-                    return input.keyBy(new DynamicPartitionKeySelector());
+                    return input.keyBy(new DynamicPartitionKeySelector(param));
                 case "RANGE":
                     LOG.info("Distribute rows by equality fields, because there are equality fields set "
                                     + "and{}=range is not supported yet in flink",
                             WRITE_DISTRIBUTION_MODE);
-                    return input.keyBy(new DynamicEqualityFieldKeySelector());
+                    return input.keyBy(new DynamicEqualityFieldKeySelector(param));
                 default:
                     throw new RuntimeException("Unrecognized " + WRITE_DISTRIBUTION_MODE + ": " + writeMode);
             }
@@ -281,8 +288,11 @@ public class FlinkDynamicTableSink {
         }
     }
 
-    static DynamicIcebergStreamWriter createStreamWriter(Map<String, String> writeOptions, ReadableConfig readableConfig) {
-        DynamicTaskWriterFactory<RowData> taskWriterFactory = new DynamicRowDataTaskWriterFactory(writeOptions, readableConfig);
+    static DynamicIcebergStreamWriter createStreamWriter(Map<String, String> writeOptions,
+                                                         ReadableConfig readableConfig,
+                                                         ParameterTool param) {
+        DynamicTaskWriterFactory<RowData> taskWriterFactory =
+                new DynamicRowDataTaskWriterFactory(writeOptions, readableConfig, param);
         String async = writeOptions.getOrDefault("asyncFlush", "true");
         String corePoolSize = writeOptions.getOrDefault("corePoolSize",
                 FlinkConfigOptions.TABLE_EXEC_ICEBERG_WORKER_POOL_SIZE.defaultValue().toString());
@@ -291,7 +301,8 @@ public class FlinkDynamicTableSink {
                 taskWriterFactory,
                 Boolean.parseBoolean(async),
                 Integer.parseInt(corePoolSize),
-                Integer.parseInt(maxWriteCount));
+                Integer.parseInt(maxWriteCount),
+                param);
     }
 
 }

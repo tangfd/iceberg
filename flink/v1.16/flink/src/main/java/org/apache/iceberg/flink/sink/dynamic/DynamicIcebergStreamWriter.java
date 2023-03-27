@@ -28,6 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.collections.MapUtils;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
@@ -49,6 +50,7 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
     private static final long serialVersionUID = 1L;
 
     private final DynamicTaskWriterFactory<RowData> taskWriterFactory;
+    private final ParameterTool param;
 
     private static final transient Map<String, TaskWriter<RowData>> WRITER_MAP = new ConcurrentHashMap<>(256);
     private static final transient Map<String, IcebergStreamWriterMetrics> METRICS_MAP = new ConcurrentHashMap<>(256);
@@ -61,11 +63,12 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
     private final int corePoolSize;
 
     DynamicIcebergStreamWriter(DynamicTaskWriterFactory<RowData> taskWriterFactory,
-                               boolean asyncFlush, int corePoolSize, int maxWriteCount) {
+                               boolean asyncFlush, int corePoolSize, int maxWriteCount, ParameterTool param) {
         this.asyncFlush = asyncFlush;
         this.maxWriteCount = maxWriteCount;
         this.corePoolSize = corePoolSize;
         this.taskWriterFactory = taskWriterFactory;
+        this.param = param;
         setChainingStrategy(ChainingStrategy.ALWAYS);
     }
 
@@ -96,7 +99,7 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
     }
 
     private TaskWriter<RowData> create(TableInfo tableInfo) {
-        Table table = IcebergTableServiceLoader.loadTable(tableInfo);
+        Table table = IcebergTableServiceLoader.loadTable(tableInfo, param);
         METRICS_MAP.computeIfAbsent(tableInfo.getTable(), t -> new IcebergStreamWriterMetrics(super.metrics, table.name()));
         return taskWriterFactory.create(tableInfo, this.subTaskId, this.attemptId);
     }

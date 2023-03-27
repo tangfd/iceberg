@@ -23,8 +23,6 @@ package org.apache.iceberg.flink.sink.dynamic;
 
 
 import java.io.Serializable;
-import org.apache.iceberg.Table;
-import org.apache.iceberg.flink.sink.dynamic.table.IcebergTableServiceLoader;
 import org.apache.iceberg.io.WriteResult;
 
 /**
@@ -47,7 +45,4 @@ public class WriteResultWithTable implements Serializable {
         return tableName;
     }
 
-    public Table getTable() {
-        return IcebergTableServiceLoader.loadTable(TableInfo.of(null, tableName));
-    }
 }
