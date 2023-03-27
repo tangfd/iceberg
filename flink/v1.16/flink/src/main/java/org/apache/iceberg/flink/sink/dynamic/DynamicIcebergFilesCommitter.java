@@ -104,18 +104,18 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
     // interrupted because of network/disk failure etc, while we don't expect any data loss in iceberg
     // table. So we keep the finished files <1, <file0, file1>> in memory and retry to commit iceberg
     // table when the next checkpoint happen.
-    private final NavigableMap<Long, Map<String, byte[]>> dataFilesPerCheckpoint = Maps.newTreeMap();
+    private transient NavigableMap<Long, Map<String, byte[]>> dataFilesPerCheckpoint;
 
     // The completed files cache for current checkpoint. Once the snapshot barrier received, it will
     // be flushed to the 'dataFilesPerCheckpoint'.
-    private final Map<String, List<WriteResult>> writeResultsOfCurrentCkpt = new ConcurrentHashMap<>(32);
+    private transient Map<String, List<WriteResult>> writeResultsOfCurrentCkpt;
     private final String branch;
 
     // It will have an unique identifier for one job.
     private transient String flinkJobId;
     private transient String operatorUniqueId;
-    private final transient Map<String, IcebergFilesCommitterMetrics> committerMetricsMap = new HashMap<>(32);
-    private final transient Map<String, ManifestOutputFileFactory> manifestOutputFileFactoryMap = new HashMap<>(32);
+    private transient Map<String, IcebergFilesCommitterMetrics> committerMetricsMap;
+    private transient Map<String, ManifestOutputFileFactory> manifestOutputFileFactoryMap;
     private transient long maxCommittedCheckpointId;
     private transient int continuousEmptyCheckpoints;
     private transient int maxContinuousEmptyCommits;
@@ -504,7 +504,10 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
     @Override
     public void open() throws Exception {
         super.open();
-
+        this.committerMetricsMap = new HashMap<>(32);
+        this.manifestOutputFileFactoryMap = new HashMap<>(32);
+        this.writeResultsOfCurrentCkpt = new ConcurrentHashMap<>(32);
+        this.dataFilesPerCheckpoint = Maps.newTreeMap();
         final String operatorID = getRuntimeContext().getOperatorUniqueID();
         this.workerPool = ThreadPools.newWorkerPool("iceberg-worker-pool-" + operatorID, workerPoolSize);
     }

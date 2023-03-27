@@ -52,8 +52,8 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
     private final DynamicTaskWriterFactory<RowData> taskWriterFactory;
     private final ParameterTool param;
 
-    private static final transient Map<String, TaskWriter<RowData>> WRITER_MAP = new ConcurrentHashMap<>(256);
-    private static final transient Map<String, IcebergStreamWriterMetrics> METRICS_MAP = new ConcurrentHashMap<>(256);
+    private transient Map<String, TaskWriter<RowData>> writerMap;
+    private transient Map<String, IcebergStreamWriterMetrics> metricsMap;
     private transient int subTaskId;
     private transient int attemptId;
     private transient int currentCount = 0;
@@ -76,6 +76,8 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
     public void open() {
         this.subTaskId = getRuntimeContext().getIndexOfThisSubtask();
         this.attemptId = getRuntimeContext().getAttemptNumber();
+        this.writerMap = new ConcurrentHashMap<>(256);
+        this.metricsMap = new ConcurrentHashMap<>(256);
         if (asyncFlush) {
             Preconditions.checkArgument(corePoolSize > 0, "corePoolSize must be more than 0");
             executor = ThreadPools.newWorkerPool("flush-write-data-thread", corePoolSize);
@@ -90,7 +92,7 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
     @Override
     public void processElement(StreamRecord<RowDataWithTable> element) throws Exception {
         RowDataWithTable rowDataWithTable = element.getValue();
-        TaskWriter<RowData> writer = WRITER_MAP.computeIfAbsent(rowDataWithTable.getTable(),
+        TaskWriter<RowData> writer = writerMap.computeIfAbsent(rowDataWithTable.getTable(),
                 t -> create(rowDataWithTable.tableInfo));
         writer.write(rowDataWithTable.rowData);
         if (++this.currentCount > this.maxWriteCount) {
@@ -100,14 +102,14 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
 
     private TaskWriter<RowData> create(TableInfo tableInfo) {
         Table table = IcebergTableServiceLoader.loadTable(tableInfo, param);
-        METRICS_MAP.computeIfAbsent(tableInfo.getTable(), t -> new IcebergStreamWriterMetrics(super.metrics, table.name()));
+        metricsMap.computeIfAbsent(tableInfo.getTable(), t -> new IcebergStreamWriterMetrics(super.metrics, table.name()));
         return taskWriterFactory.create(tableInfo, this.subTaskId, this.attemptId);
     }
 
     @Override
     public void close() throws Exception {
         super.close();
-        if (MapUtils.isEmpty(WRITER_MAP)) {
+        if (MapUtils.isEmpty(writerMap)) {
             return;
         }
 
@@ -115,7 +117,7 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
             executor.shutdown();
         }
 
-        for (Iterator<Map.Entry<String, TaskWriter<RowData>>> iterator = WRITER_MAP.entrySet().iterator(); iterator.hasNext(); ) {
+        for (Iterator<Map.Entry<String, TaskWriter<RowData>>> iterator = writerMap.entrySet().iterator(); iterator.hasNext(); ) {
             Map.Entry<String, TaskWriter<RowData>> entry = iterator.next();
             iterator.remove();
             entry.getValue().close();
@@ -136,7 +138,7 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
-                .add("table_name", WRITER_MAP.keySet())
+                .add("table_name", writerMap.keySet())
                 .add("subtask_id", subTaskId)
                 .add("attempt_id", attemptId)
                 .toString();
@@ -146,13 +148,13 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
      * close all open files and emit files to downstream committer operator
      */
     private void flush() throws IOException {
-        if (MapUtils.isEmpty(WRITER_MAP)) {
+        if (MapUtils.isEmpty(writerMap)) {
             return;
         }
 
         this.currentCount = 0;
         if (!asyncFlush) {
-            for (Iterator<Map.Entry<String, TaskWriter<RowData>>> iterator = WRITER_MAP.entrySet().iterator(); iterator.hasNext(); ) {
+            for (Iterator<Map.Entry<String, TaskWriter<RowData>>> iterator = writerMap.entrySet().iterator(); iterator.hasNext(); ) {
                 Map.Entry<String, TaskWriter<RowData>> entry = iterator.next();
                 iterator.remove();
                 flush(entry.getValue(), entry.getKey());
@@ -162,8 +164,8 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
         }
 
         Preconditions.checkArgument(executor != null, "writer executor shouldn't be null");
-        List<Future<Object>> futures = new ArrayList<>(WRITER_MAP.size());
-        for (Iterator<Map.Entry<String, TaskWriter<RowData>>> iterator = WRITER_MAP.entrySet().iterator(); iterator.hasNext(); ) {
+        List<Future<Object>> futures = new ArrayList<>(writerMap.size());
+        for (Iterator<Map.Entry<String, TaskWriter<RowData>>> iterator = writerMap.entrySet().iterator(); iterator.hasNext(); ) {
             Map.Entry<String, TaskWriter<RowData>> entry = iterator.next();
             iterator.remove();
             futures.add(executor.submit(() -> {
@@ -191,7 +193,7 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
 
         long startNano = System.nanoTime();
         WriteResult result = writer.complete();
-        IcebergStreamWriterMetrics writerMetrics = METRICS_MAP.get(table);
+        IcebergStreamWriterMetrics writerMetrics = metricsMap.get(table);
         writerMetrics.updateFlushResult(result);
         output.collect(new StreamRecord<>(new WriteResultWithTable(result, table)));
         writerMetrics.flushDuration(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNano));
