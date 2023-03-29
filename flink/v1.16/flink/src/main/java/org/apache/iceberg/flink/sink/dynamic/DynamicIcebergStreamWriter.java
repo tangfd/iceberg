@@ -18,6 +18,7 @@
  */
 package org.apache.iceberg.flink.sink.dynamic;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -53,7 +54,7 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
     private final ParameterTool param;
 
     private transient Map<String, TaskWriter<RowData>> writerMap;
-    private transient Map<String, IcebergStreamWriterMetrics> metricsMap;
+    private transient Cache<String, IcebergStreamWriterMetrics> metricsCache;
     private transient int subTaskId;
     private transient int attemptId;
     private transient int currentCount = 0;
@@ -77,7 +78,7 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
         this.subTaskId = getRuntimeContext().getIndexOfThisSubtask();
         this.attemptId = getRuntimeContext().getAttemptNumber();
         this.writerMap = new ConcurrentHashMap<>(256);
-        this.metricsMap = new ConcurrentHashMap<>(256);
+        this.metricsCache = CacheUtils.createCache();
         if (asyncFlush) {
             Preconditions.checkArgument(corePoolSize > 0, "corePoolSize must be more than 0");
             executor = ThreadPools.newWorkerPool("flush-write-data-thread", corePoolSize);
@@ -101,8 +102,6 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
     }
 
     private TaskWriter<RowData> create(TableInfo tableInfo) {
-        Table table = IcebergTableServiceLoader.loadTable(tableInfo, param);
-        metricsMap.computeIfAbsent(tableInfo.getTable(), t -> new IcebergStreamWriterMetrics(super.metrics, table.name()));
         return taskWriterFactory.create(tableInfo, this.subTaskId, this.attemptId);
     }
 
@@ -186,16 +185,18 @@ class DynamicIcebergStreamWriter extends AbstractStreamOperator<WriteResultWithT
     /**
      * close all open files and emit files to downstream committer operator
      */
-    private void flush(TaskWriter<RowData> writer, String table) throws IOException {
+    private void flush(TaskWriter<RowData> writer, String tableName) throws IOException {
         if (writer == null) {
             return;
         }
 
         long startNano = System.nanoTime();
         WriteResult result = writer.complete();
-        IcebergStreamWriterMetrics writerMetrics = metricsMap.get(table);
+        Table table = IcebergTableServiceLoader.loadExistTableWithCache(tableName, param);
+        IcebergStreamWriterMetrics writerMetrics = metricsCache.get(tableName,
+                t -> new IcebergStreamWriterMetrics(super.metrics, table.name()));
         writerMetrics.updateFlushResult(result);
-        output.collect(new StreamRecord<>(new WriteResultWithTable(result, table)));
+        output.collect(new StreamRecord<>(new WriteResultWithTable(result, tableName)));
         writerMetrics.flushDuration(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNano));
     }
 }

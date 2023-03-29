@@ -18,9 +18,8 @@
  */
 package org.apache.iceberg.flink.sink.dynamic;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.table.api.TableSchema;
@@ -37,8 +36,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.Lists;
  * be emitted to same writer in order.
  */
 class DynamicEqualityFieldKeySelector implements KeySelector<RowDataWithTable, Integer> {
-    // TODO: 2023/3/16 换成 Caffeine 设置淘汰
-    private static final transient Map<String, EqualityFieldKeySelector> KEY_SELECTOR_MAP = new ConcurrentHashMap<>(256);
+    private static final transient Cache<String, EqualityFieldKeySelector> KEY_SELECTOR_CACHE = CacheUtils.createCache();
     private final ParameterTool param;
 
     public DynamicEqualityFieldKeySelector(ParameterTool param) {
@@ -48,7 +46,7 @@ class DynamicEqualityFieldKeySelector implements KeySelector<RowDataWithTable, I
     @Override
     public Integer getKey(RowDataWithTable row) {
         TableInfo tableInfo = row.tableInfo;
-        return KEY_SELECTOR_MAP.computeIfAbsent(tableInfo.getTable(), t -> create(tableInfo)).getKey(row.rowData);
+        return KEY_SELECTOR_CACHE.get(tableInfo.getTable(), t -> create(tableInfo)).getKey(row.rowData);
     }
 
     private EqualityFieldKeySelector create(TableInfo tableInfo) {

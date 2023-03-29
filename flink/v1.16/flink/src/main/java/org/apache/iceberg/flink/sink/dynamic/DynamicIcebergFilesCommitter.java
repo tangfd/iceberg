@@ -18,6 +18,7 @@
  */
 package org.apache.iceberg.flink.sink.dynamic;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -114,8 +115,8 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
     // It will have an unique identifier for one job.
     private transient String flinkJobId;
     private transient String operatorUniqueId;
-    private transient Map<String, IcebergFilesCommitterMetrics> committerMetricsMap;
-    private transient Map<String, ManifestOutputFileFactory> manifestOutputFileFactoryMap;
+    private transient Cache<String, IcebergFilesCommitterMetrics> committerMetricsCache;
+    private transient Cache<String, ManifestOutputFileFactory> manifestOutputFileFactoryCache;
     private transient long maxCommittedCheckpointId;
     private transient int continuousEmptyCheckpoints;
     private transient int maxContinuousEmptyCommits;
@@ -235,7 +236,8 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
         writeResultsOfCurrentCkpt.clear();
         for (String tableName : manifests.keySet()) {
             Table table = IcebergTableServiceLoader.loadExistTableWithCache(tableName, param);
-            IcebergFilesCommitterMetrics committerMetrics = committerMetricsMap.get(table.name());
+            IcebergFilesCommitterMetrics committerMetrics = committerMetricsCache.get(table.name(),
+                    t -> new IcebergFilesCommitterMetrics(super.metrics, table.name()));
             if (committerMetrics != null) {
                 committerMetrics.checkpointDuration(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNano));
             }
@@ -298,7 +300,8 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
 
         commitPendingResult(pendingResults, filesCountMap, newFlinkJobId, operatorId, checkpointId);
         for (Map.Entry<Table, NavigableMap<Long, WriteResultWithSummary>> entry : pendingResults.entrySet()) {
-            IcebergFilesCommitterMetrics committerMetrics = committerMetricsMap.get(entry.getKey().name());
+            IcebergFilesCommitterMetrics committerMetrics = committerMetricsCache.get(entry.getKey().name(),
+                    t -> new IcebergFilesCommitterMetrics(super.metrics, entry.getKey().name()));
             entry.getValue().values().stream()
                     .map(WriteResultWithSummary::getSummary)
                     .forEach(committerMetrics::updateCommitSummary);
@@ -455,7 +458,7 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
         long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNano);
         LOG.info("Committed {} to table: {}, branch: {}, checkpointId {} in {} ms",
                 description, table, branch, checkpointId, durationMs);
-        IcebergFilesCommitterMetrics committerMetrics = committerMetricsMap.computeIfAbsent(table,
+        IcebergFilesCommitterMetrics committerMetrics = committerMetricsCache.get(table,
                 t -> new IcebergFilesCommitterMetrics(super.metrics, table));
         committerMetrics.commitDuration(durationMs);
     }
@@ -490,7 +493,7 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
             WriteResult result = WriteResult.builder().addAll(entry.getValue()).build();
             String tableName = entry.getKey();
             Table table = IcebergTableServiceLoader.loadExistTableWithCache(tableName, param);
-            ManifestOutputFileFactory manifestOutputFileFactory = manifestOutputFileFactoryMap.computeIfAbsent(tableName,
+            ManifestOutputFileFactory manifestOutputFileFactory = manifestOutputFileFactoryCache.get(tableName,
                     t -> FlinkManifestUtil.createOutputFileFactory(table, flinkJobId, operatorUniqueId, subTaskId, attemptId));
             DeltaManifests deltaManifests =
                     FlinkManifestUtil.writeCompletedFiles(result, () -> manifestOutputFileFactory.create(checkpointId), table.spec());
@@ -504,8 +507,8 @@ class DynamicIcebergFilesCommitter extends AbstractStreamOperator<Void>
     @Override
     public void open() throws Exception {
         super.open();
-        this.committerMetricsMap = new HashMap<>(32);
-        this.manifestOutputFileFactoryMap = new HashMap<>(32);
+        this.committerMetricsCache = CacheUtils.createCache();
+        this.manifestOutputFileFactoryCache = CacheUtils.createCache();
         this.writeResultsOfCurrentCkpt = new ConcurrentHashMap<>(32);
         this.dataFilesPerCheckpoint = Maps.newTreeMap();
         final String operatorID = getRuntimeContext().getOperatorUniqueID();

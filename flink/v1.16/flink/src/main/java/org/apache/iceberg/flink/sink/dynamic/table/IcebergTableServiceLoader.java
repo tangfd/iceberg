@@ -21,14 +21,14 @@
 
 package org.apache.iceberg.flink.sink.dynamic.table;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.ServiceLoader;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.flink.TableLoader;
+import org.apache.iceberg.flink.sink.dynamic.CacheUtils;
 import org.apache.iceberg.flink.sink.dynamic.TableInfo;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.slf4j.Logger;
@@ -41,8 +41,7 @@ import org.slf4j.LoggerFactory;
  */
 public class IcebergTableServiceLoader {
     private static final Logger LOG = LoggerFactory.getLogger(IcebergTableServiceLoader.class);
-    private static final Map<String, Table> TABLE_CACHE = new HashMap<>();
-
+    private static final Cache<String, Table> TABLE_CACHE = CacheUtils.createCache();
     private static IcebergTableService icebergTableService;
 
     public static Table loadTable(TableInfo tableInfo, ParameterTool param) {
@@ -66,13 +65,13 @@ public class IcebergTableServiceLoader {
     }
 
     public static Table loadExistTableWithCache(String tableName, ParameterTool param) {
-        Table table = TABLE_CACHE.get(tableName);
+        Table table = TABLE_CACHE.getIfPresent(tableName);
         if (table != null) {
             return table;
         }
 
         synchronized (IcebergTableServiceLoader.class) {
-            table = TABLE_CACHE.get(tableName);
+            table = TABLE_CACHE.getIfPresent(tableName);
             if (table != null) {
                 return table;
             }

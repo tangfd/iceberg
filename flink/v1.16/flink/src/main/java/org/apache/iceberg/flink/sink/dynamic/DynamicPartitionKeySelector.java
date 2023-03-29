@@ -18,8 +18,7 @@
  */
 package org.apache.iceberg.flink.sink.dynamic;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.github.benmanes.caffeine.cache.Cache;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.table.api.TableSchema;
@@ -36,8 +35,7 @@ import org.apache.iceberg.flink.sink.dynamic.table.IcebergTableServiceLoader;
  * one task. That will reduce lots of small files in partitioned fanout write policy for {@link FlinkSink}.
  */
 class DynamicPartitionKeySelector implements KeySelector<RowDataWithTable, String> {
-    // TODO: 2023/3/16 换成 Caffeine 设置淘汰
-    private static final transient Map<String, PartitionKeySelector> KEY_SELECTOR_MAP = new ConcurrentHashMap<>(256);
+    private static final transient Cache<String, PartitionKeySelector> KEY_SELECTOR_CACHE = CacheUtils.createCache();
     private final ParameterTool param;
 
     public DynamicPartitionKeySelector(ParameterTool param) {
@@ -47,7 +45,7 @@ class DynamicPartitionKeySelector implements KeySelector<RowDataWithTable, Strin
     @Override
     public String getKey(RowDataWithTable row) {
         TableInfo tableInfo = row.tableInfo;
-        return KEY_SELECTOR_MAP.computeIfAbsent(tableInfo.getTable(), t -> create(tableInfo)).getKey(row.rowData);
+        return KEY_SELECTOR_CACHE.get(tableInfo.getTable(), t -> create(tableInfo)).getKey(row.rowData);
     }
 
     private PartitionKeySelector create(TableInfo tableInfo) {

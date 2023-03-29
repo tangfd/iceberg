@@ -18,8 +18,8 @@
  */
 package org.apache.iceberg.flink.sink.dynamic;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.TableSchema;
@@ -50,9 +50,7 @@ import static org.apache.iceberg.TableProperties.PARQUET_COMPRESSION_LEVEL;
  */
 public class DynamicRowDataTaskWriterFactory implements DynamicTaskWriterFactory<RowData> {
 
-    // TODO: 2023/3/16 换成 Caffeine 设置淘汰
-    private static final transient Map<String, RowDataTaskWriterFactory> FACTORY_MAP = new ConcurrentHashMap<>(256);
-
+    private static final transient Cache<String, RowDataTaskWriterFactory> FACTORY_CACHE = CacheUtils.createCache();
     private final boolean upsert;
     private final ParameterTool param;
     private final Map<String, String> writeOptions;
@@ -67,7 +65,7 @@ public class DynamicRowDataTaskWriterFactory implements DynamicTaskWriterFactory
 
     @Override
     public TaskWriter<RowData> create(TableInfo tableInfo, int taskId, int attemptId) {
-        return FACTORY_MAP.computeIfAbsent(tableInfo.getTable(),
+        return FACTORY_CACHE.get(tableInfo.getTable(),
                 t -> createTaskWriterFactory(tableInfo, taskId, attemptId)).create();
     }
 
